@@ -21,7 +21,7 @@ get.nav   <- F
 get.bathy <- F
 
 # Source survey info ------------------------------------------------------
-source(here("Code/settings_1707RL.R"))
+source(here("Code/settings_1704RL.R"))
 
 # Define ERDDAP data variables -------------------------------------------------
 erddap.vars       <- c("time,latitude,longitude,platformSpeed")
@@ -109,7 +109,7 @@ wc.long <- range(nav$lon) #c(-130, -116)
 wc.bounds.stamen <- c(left = min(wc.long), bottom = min(wc.lat),
                       right = max(wc.long), top = max(wc.lat))
 # Download stamen map of west coast; zoom = 6 seems good
-wc.map.stamen.toner <- get_stamenmap(wc.bounds.stamen, zoom = 6, maptype = "toner-lite") %>% 
+wc.map.stamen.toner <- get_stamenmap(wc.bounds.stamen, zoom = survey.zoom, maptype = "toner-lite") %>% 
   ggmap() + xlab("Longitude") + ylab("Latitude") + theme_bw()
 
 # Map results by depth bin
@@ -119,32 +119,40 @@ bathy.plot <- wc.map.stamen.toner +
   theme(legend.position = c(0,0),
         legend.justification = c(0,0),
         legend.background = element_blank(),
-        legend.key = element_blank())
+        legend.key = element_blank()) +
+  ggtitle("Vessel nav by depth")
 
 # Map results by day/night
 daynight.plot <- wc.map.stamen.toner + 
   geom_point(data = nav.depth, aes(lon, lat, colour = day_night),size = 0.5) +
-  scale_colour_manual(name = "Depth", values = c("yellow", "black")) +
+  scale_colour_manual(name = "Time of day", values = c("yellow", "black")) +
   theme(legend.position = c(0,0),
         legend.justification = c(0,0),
         legend.background = element_blank(),
-        legend.key = element_blank())
+        legend.key = element_blank()) +
+  ggtitle("Vessel nav by day/night")
+
 
 # Combine plots
 bathy.photo.plot <- plot_grid(bathy.plot,daynight.plot,nrow = 1, align = "v")
 
 # Save combo plot
 ggsave(bathy.photo.plot, filename = paste(here("Figs"),"/",survey.name,"_nav_depth_day.png", sep = ""),
-       height = 8, width = 8)
+       height = map.height, width = map.width*2)
 
 # Map only daytime nav by depth
 day.plot <- wc.map.stamen.toner + 
   geom_point(data = filter(nav.depth, day_night == "Day"), aes(lon, lat, colour = depth_bin), size = 0.5) +
-  scale_colour_manual(name = "Depth", values = c("#40C270","#1C1C8A"))
+  scale_colour_manual(name = "Depth", values = c("#40C270","#1C1C8A")) +
+  theme(legend.position = c(0,0),
+        legend.justification = c(0,0),
+        legend.background = element_blank(),
+        legend.key = element_blank()) +
+  ggtitle("Daytime vessel nav by depth")
 
 # Save daytime only plot
 ggsave(day.plot, filename = paste(here("Figs"),"/",survey.name,"_nav_depth.png", sep = ""),
-       height = 8, width = 4)
+       height = map.height, width = map.width)
 
 # Summarise distance by day/night and depth
 nav.summ <- nav.depth %>% 
