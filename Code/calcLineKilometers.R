@@ -21,7 +21,7 @@ get.nav   <- F
 get.bathy <- F
 
 # Source survey info ------------------------------------------------------
-source(here("Code/settings_1704RL.R"))
+source(here("Code/settings_1707RL.R"))
 
 # Define ERDDAP data variables -------------------------------------------------
 erddap.vars       <- c("time,latitude,longitude,platformSpeed")
