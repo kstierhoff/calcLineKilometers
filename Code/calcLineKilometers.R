@@ -17,11 +17,11 @@ dir.create(here("Figs"))
 dir.create(here("Output"))
 
 # Set processing controls -------------------------------------------------
-get.nav   <- F
-get.bathy <- F
+get.nav   <- T
+get.bathy <- T
 
 # Source survey info ------------------------------------------------------
-source(here("Code/settings_1707RL.R"))
+source(here("Code/settings_1706RL.R"))
 
 # Define ERDDAP data variables -------------------------------------------------
 erddap.vars       <- c("time,latitude,longitude,platformSpeed")

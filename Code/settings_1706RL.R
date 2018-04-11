@@ -1,5 +1,5 @@
 # Survey info -------------------------------------------------------------
-survey.name <- "1707RL"
+survey.name <- "1706RL"
 
 # Define ERDDAP data variables -------------------------------------------------
 survey.start.erddap  <- "2017-06-18"  # Start of survey for ERDDAP vessel data query
