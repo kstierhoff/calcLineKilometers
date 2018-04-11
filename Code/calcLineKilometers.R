@@ -11,12 +11,17 @@ load_pkgs = function(pkgs) {
 # Load packages
 load_pkgs(pkgs)
 
+# Create output directories
+dir.create(here("Data"))
+dir.create(here("Figs"))
+dir.create(here("Output"))
+
 # Set processing controls -------------------------------------------------
-get.nav   <- T
-get.bathy <- T
+get.nav   <- F
+get.bathy <- F
 
 # Source survey info ------------------------------------------------------
-source(here("Code/settings_1704RL.R"))
+source(here("Code/settings_1707RL.R"))
 
 # Define ERDDAP data variables -------------------------------------------------
 erddap.vars       <- c("time,latitude,longitude,platformSpeed")
@@ -33,9 +38,10 @@ if (get.nav) {
   # Download and parse ERDDAP nav data
   nav <- data.frame(read.csv(dataURL,header = F,colClasses = erddap.classes,row.names = NULL,skip = 0)) 
   colnames(nav) <- erddap.headers  
-  
   # Save nav
-  save(nav, file = here("Data/nav.Rdata"))
+  save(nav, file = paste(here("Data"),"/",survey.name,"_nav.Rdata", sep = ""))
+} else {
+  load(paste(here("Data"),"/",survey.name,"_nav.Rdata", sep = ""))
 }
 
 # Format nav
@@ -74,11 +80,11 @@ nav.daynight <- nav.daynight %>%
 # Get bathymetry data across range of nav data (plus/minus one degree lat/long)
 if (get.bathy) {
   bathy <- getNOAA.bathy(lon1 = min(nav$lon - 1), lon2 = max(nav$lon + 1),
-                         lat1 = max(nav$lat) + 1, lat2 = min(nav$lat) - 1, resolution = 4)
+                         lat1 = max(nav$lat) + 1, lat2 = min(nav$lat) - 1, resolution = 1)
   # Save bathy results
-  save(bathy, file = here("Data/bathy.Rdata"))  
+  save(bathy, file = paste(here("Data"),"/",survey.name,"_bathy.Rdata", sep = ""))  
 } else {
-  load(here("Data/bathy.Rdata"))
+  load(paste(here("Data"),"/",survey.name,"_bathy.Rdata", sep = ""))
 }
 
 # Get nav depth and compute photoperiod
@@ -133,7 +139,8 @@ ggsave(bathy.photo.plot, filename = paste(here("Figs"),"/",survey.name,"_nav_dep
 
 # Map only daytime nav by depth
 day.plot <- wc.map.stamen.toner + 
-  geom_point(data = filter(nav.depth, day_night == "Day"), aes(lon, lat), colour = "gray20", size = 0.5) 
+  geom_point(data = filter(nav.depth, day_night == "Day"), aes(lon, lat, colour = depth_bin), size = 0.5) +
+  scale_colour_manual(name = "Depth", values = c("#40C270","#1C1C8A"))
 
 # Save daytime only plot
 ggsave(day.plot, filename = paste(here("Figs"),"/",survey.name,"_nav_depth.png", sep = ""),
