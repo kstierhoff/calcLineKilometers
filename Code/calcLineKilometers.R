@@ -18,7 +18,7 @@ dir.create(here("Output"))
 
 # Set processing controls -------------------------------------------------
 get.nav   <- T
-get.bathy <- T
+get.bathy <- F
 
 # Source survey info ------------------------------------------------------
 source(here("Code/settings_1706RL.R"))
@@ -90,11 +90,11 @@ if (get.bathy) {
 # Get nav depth and compute photoperiod
 nav.depth <- get.depth(bathy, nav$lon, nav$lat, locator = F, distance = T) %>% 
   bind_cols(select(nav, time, dist)) %>% 
-  mutate(depth_bin = cut(depth,c(min(depth),-250,0), include.lowest = T, labels = F),
+  mutate(depth_bin = cut(depth,c(min(depth),-200,0), include.lowest = T, labels = F),
          id = cut(time,nav.daynight$time, include.lowest = T, labels = F),
          depth_bin = case_when(
-           depth_bin == 1 ~ ">250m",
-           depth_bin == 2 ~ "< 250 m")) %>% 
+           depth_bin == 1 ~ ">200m",
+           depth_bin == 2 ~ "< 200 m")) %>% 
   filter(!is.na(depth_bin)) %>% 
   left_join(select(nav.daynight,id,period)) %>% 
   mutate(day_night = case_when(
