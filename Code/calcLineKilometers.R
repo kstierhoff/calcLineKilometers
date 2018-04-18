@@ -21,7 +21,7 @@ get.nav   <- T
 get.bathy <- F
 
 # Source survey info ------------------------------------------------------
-source(here("Code/settings_1706RL.R"))
+source(here("Code/settings_1703RL.R"))
 
 # Define ERDDAP data variables -------------------------------------------------
 erddap.vars       <- c("time,latitude,longitude,platformSpeed")
@@ -156,6 +156,7 @@ ggsave(day.plot, filename = paste(here("Figs"),"/",survey.name,"_nav_depth.png",
 
 # Summarise distance by day/night and depth
 nav.summ <- nav.depth %>% 
+  filter(!is.nan(dist)) %>% 
   group_by(depth_bin,day_night) %>% 
   summarise(
     dist_km = sum(dist)) %>% 
