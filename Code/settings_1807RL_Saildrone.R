@@ -1,5 +1,6 @@
 # Survey info -------------------------------------------------------------
-survey.name <- "1807RL_Saildrone"
+survey.name <- "1807RL"
+survey.vessel <- "Saildrone"
 sd.survey   <- TRUE
 
 # Define ERDDAP data variables -------------------------------------------------

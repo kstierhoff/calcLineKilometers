@@ -58,11 +58,11 @@ if (get.nav) {
   nav <- nav[which(!is.nan(nav$SOG)), ]
   
   # Save nav
-  save(nav, file = paste(here("Data"), "/", survey.name, "_nav.Rdata", sep = ""))
+  save(nav, file = paste(here("Data"), "/", survey.name, "_nav_", survey.vessel, ".Rdata", sep = ""))
   
 } else {
   # Load previously downloaded data
-  load(paste(here("Data"),"/",survey.name,"_nav.Rdata", sep = ""))
+  load(paste(here("Data"), "/", survey.name, "_nav_", survey.vessel, ".Rdata", sep = ""))
 }
 
 # Downsample nav?
@@ -82,9 +82,10 @@ if (get.bathy) {
                          resolution = 1)
   # Save bathy results
   save(bathy, file = paste(here("Data"), "/",
-                           survey.name,"_bathy.Rdata", sep = ""))  
+                           survey.name,"_bathy_", survey.vessel, ".Rdata", sep = ""))  
 } else {
-  load(paste(here("Data"),"/",survey.name,"_bathy.Rdata", sep = ""))
+  load(paste(here("Data"), "/",
+                           survey.name,"_bathy_", survey.vessel, ".Rdata", sep = ""))
 }
 ```
 
@@ -242,7 +243,7 @@ if (sd.survey) {
 }
 
 # Write results to file
-write_csv(nav.summ, paste(here("Output"), "/", survey.name, "_LineKilometers.csv", sep = ""))
+write_csv(nav.summ, paste(here("Output"), "/", survey.name, "_LineKilometers_", survey.vessel, ".csv", sep = ""))
 ```
 
 # Summarize effort by depth and day/night
@@ -299,10 +300,10 @@ bathy.photo.plot <- plot_grid(bathy.plot,
 
 # Save combo plot
 ggsave(bathy.photo.plot, 
-       filename = paste(here("Figs"), "/", survey.name, "_nav_depth_day.png", sep = ""),
+       filename = paste(here("Figs"), "/", survey.name, "_nav_depth_day_", survey.vessel, ".png", sep = ""),
        height = map.height, width = map.width*2)
 
-include_graphics(paste(here("Figs"), "/", survey.name, "_nav_depth_day.png", sep = ""))
+include_graphics(paste(here("Figs"), "/", survey.name, "_nav_depth_day_", survey.vessel, ".png", sep = ""))
 ```
 
 # Map vessel nav by depth (daytime only)
@@ -321,10 +322,10 @@ day.plot <- wc.map.stamen.toner +
 
 # Save daytime only plot
 ggsave(day.plot, 
-       filename = paste(here("Figs"),"/",survey.name, "_nav_depth.png", sep = ""),
+       filename = paste(here("Figs"),"/",survey.name, "_nav_depth_", survey.vessel, ".png", sep = ""),
        height = map.height, width = map.width)
 
-include_graphics(paste(here("Figs"),"/",survey.name, "_nav_depth.png", sep = ""))
+include_graphics(paste(here("Figs"),"/",survey.name, "_nav_depth_", survey.vessel, ".png", sep = ""))
 ```
 
 
