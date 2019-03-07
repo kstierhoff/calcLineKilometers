@@ -16,12 +16,6 @@ dataURL <- URLencode(paste0("https://ferret.pmel.noaa.gov/pmel/erddap/tabledap/s
                                  "&time%3C=",
                                  survey.end.erddap))
 
-# # Download and parse ERDDAP nav data
-# nav.sd <- data.frame(read.csv(saildroneURL, header = F, 
-#                               colClasses = erddap.classes.sd, 
-#                               row.names = NULL, skip = 0))
-
-
 # Downsample settings -----------------------------------------------------
 # Number of n-th samples to keep in the resulting nav data frame
 # Particularly important when dealing with large data sets with frequent
