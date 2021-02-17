@@ -3,6 +3,7 @@
 .RData
 .Ruserdata
 *.html
+Data/*.Rdata
+Data/Map/*.Rdata
 Figs/*
 Output/*
-Data/*.Rdata
