@@ -1,0 +1,417 @@
+---
+title: "Acoustic Line Kilometers-2019 Spring CalCOFI (2001RL)"
+author: "Kevin L. Stierhoff"
+date: '`r format(Sys.time(), format = "%F %T", tz = "GMT", usetz = T)`'
+css: css/ast.css
+output:
+  bookdown::html_document2:
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+# Install and load pacman (library management package)
+if (!require("pacman")) install.packages("pacman")
+
+# Install and load required packages from CRAN ---------------------------------
+pacman::p_load(tidyverse,swfscMisc,lubridate,cowplot,here,marmap,sf,
+               mapdata,photobiology,ggmap,knitr,DT,bookdown,rnaturalearth,
+               ggspatial,kableExtra)
+
+# Install and load required packages from Github -------------------------------
+# atm
+pacman::p_load_gh("kstierhoff/atm")
+# rnaturalearth data
+pacman::p_load_gh("ropenscilabs/rnaturalearthdata")
+pacman::p_load_gh("ropenscilabs/rnaturalearthhires")
+
+# Define method of table generation (whether kable or xtable) for best formatting
+doc.type <- knitr::opts_knit$get('rmarkdown.pandoc.to')
+if (is.null(doc.type)) {doc.type <- "html"}
+
+# Determine global knitr table format
+if (doc.type == "latex") {
+  knitr.format <- "latex"
+} else {
+  knitr.format <- "html" 
+}
+
+# knitr options
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, error = FALSE, warning = FALSE,
+                      fig.align = "center")
+
+# Create output directories
+dir.create(here("Data"))
+dir.create(here("Figs"))
+dir.create(here("Output"))
+```
+
+```{r user-input}
+# Set processing controls -------------------------------------------------
+get.nav   <- T
+get.bathy <- T
+save.figs <- T
+
+# Source survey info ------------------------------------------------------
+source(here("Code/settings_2101RL_CalCOFI.R"))
+```
+
+```{r get-nav}
+# Import vessel nav data from ERDDAP -------------------------------------------------------
+if (get.nav) {
+  # Download and parse ERDDAP nav data
+  nav <- data.frame(read.csv(dataURL, header = F,
+                             colClasses = erddap.classes,
+                             row.names = NULL,
+                             skip = 0)) 
+  # Add column names
+  colnames(nav) <- erddap.headers
+  
+  # Filter to remove bad SST values
+  nav <- nav %>%
+    mutate(long     = long - 360,
+           SOG      = SOG * 1.94384,
+           datetime = ymd_hms(time),
+           SST      = na_if(SST, NaN)) %>%
+    filter(is.nan(SOG) == F, SOG > 0, SOG < 15,
+           between(lat, min(survey.lat), max(survey.lat)),
+           between(long, min(survey.long), max(survey.long)))
+  
+  # Remove any NaN rows
+  nav <- nav[which(!is.nan(nav$SOG)), ]
+  
+  # Save nav
+  save(nav, file = paste0(here("Data"), "/", survey.name, "_nav_", survey.vessel, ".Rdata"))
+  
+} else {
+  # Load previously downloaded data
+  load(paste0(here("Data"), "/", survey.name, "_nav_", survey.vessel, ".Rdata"))
+}
+
+# Downsample nav?
+nav <- nav[seq(1, nrow(nav), nav.ds), ]
+
+# Summarise nav
+mean.sog <- mean(nav$SOG)
+```
+
+```{r get-bathy}
+# Get bathymetry data across range of nav data (plus/minus one degree lat/long)
+if (get.bathy) {
+  bathy <- getNOAA.bathy(lon1 = min(nav$long - 1), 
+                         lon2 = max(nav$long + 1),
+                         lat1 = max(nav$lat) + 1, 
+                         lat2 = min(nav$lat) - 1, 
+                         resolution = 1)
+  # Save bathy results
+  save(bathy, file = paste0(here("Data"), "/",
+                           survey.name,"_bathy_", survey.vessel, ".Rdata"))  
+} else {
+  load(paste0(here("Data"), "/",
+                           survey.name,"_bathy_", survey.vessel, ".Rdata"))
+}
+```
+
+```{r do-calculations}
+# Format nav
+if (sd.survey) {
+  # Process Saildrone data from ERDDAP
+  nav <- nav %>% 
+    mutate(time = ymd_hms(time),
+           date = date(time),
+           dist = SOG*60/1000) %>%  # Distance in km
+    filter(between(long, min.long, max.long), between(lat, min.lat, max.lat))  
+  
+  # Reduce data by day to compute sunrise/sunset times
+  sun.nav <- nav %>% 
+    group_by(saildrone, date) %>% 
+    summarise(lat  = mean(lat),
+              long = mean(long)) %>% 
+    as.data.frame()
+  
+  # Get sunrise/sunset for each survey day
+  nav.daynight <- data.frame()
+  
+  for (i in unique(sun.nav$saildrone)) {
+    # Subset sun.nav by saildrone number
+    sun.nav.sub <- filter(sun.nav, saildrone == i)
+    
+    for (j in 1:nrow(sun.nav.sub)) {
+      tmp <- day_night(date = sun.nav.sub$date[j], 
+                       geocode = data.frame(lat = sun.nav$lat[j],
+                                            lon = sun.nav$long[j])) %>% 
+        mutate(saildrone = i)
+      
+      # Combine results
+      nav.daynight <- bind_rows(nav.daynight, tmp)
+    }
+  }
+  
+  # Format the results
+  nav.daynight <- nav.daynight %>% 
+    mutate(sunrise = ymd_hms(paste(day, hms::as_hms(sunrise*3600))),
+           sunset = sunrise + daylength*3600,
+           sunrise = as.character(sunrise),
+           sunset = as.character(sunset)) %>% 
+    select(saildrone, day, sunrise, sunset) %>% 
+    gather(period, time, -saildrone, -day) %>% 
+    mutate(time = ymd_hms(time)) %>% 
+    arrange(saildrone, time) %>% 
+    mutate(id = seq(1, nrow(.)))
+  
+  # Create data frame for keeping depth data
+  nav.depth <- data.frame()
+  
+  for (i in unique(nav$saildrone)) {
+    # Subset nav by saildrone number
+    nav.tmp <- filter(nav, saildrone == i)
+    nav.daynight.tmp <- filter(nav.daynight, saildrone == i) %>% 
+      mutate(id = seq(1:n()))
+    
+    # Get nav depth and compute photoperiod
+    nav.depth.tmp <- get.depth(bathy, nav.tmp$long, nav.tmp$lat, locator = F, distance = T) %>% 
+      bind_cols(select(nav.tmp, time, dist)) %>% 
+      mutate(dist.depth = c(0, diff(dist.km)),
+             saildrone  = i) %>% 
+      filter(dist.depth < 100) %>% 
+      mutate(depth_bin = cut(depth, c(min(depth), -200, 0), include.lowest = T, labels = F),
+             id = cut(time, nav.daynight.tmp$time, include.lowest = T, labels = F),
+             depth_bin = case_when(
+               depth_bin == 1 ~ ">200m",
+               depth_bin == 2 ~ "< 200 m")) %>% 
+      left_join(select(nav.daynight.tmp, id, period)) %>% 
+      filter(!is.na(depth_bin), !is.na(period)) %>% 
+      mutate(day_night = case_when(
+        period == "sunrise" ~ "Day",
+        period == "sunset" ~ "Night")) 
+    
+    nav.depth <- bind_rows(nav.depth, nav.depth.tmp)
+  }
+  
+  # Summarise distance by day/night and depth
+  nav.summ <- nav.depth %>% 
+    filter(!is.nan(dist)) %>% 
+    group_by(saildrone, depth_bin, day_night) %>% 
+    summarise(
+      dist_km    = round(sum(dist.depth))) %>% 
+    mutate(
+      dist_nmi   = round(dist_km * 0.539957),
+      pings_ek60 = round(dist_km / (mean.sog / 1943.844)),
+      pings_ek80 = round(dist_km / (mean.sog / 1943.844)))
+  
+} else {
+  # Process FSV data from ERDDAP
+  nav <- nav %>% 
+    mutate(time = ymd_hms(time),
+           date = date(time),
+           dist = SOG*60/1000) %>%  # Distance in km
+    filter(between(long, min(survey.long), max(survey.long)), 
+           between(lat, min(survey.lat), max(survey.lat)))
+  
+  # Reduce data by day to compute sunrise/sunset times
+  sun.nav <- nav %>% 
+    group_by(date) %>% 
+    summarise(lat  = mean(lat),
+              long = mean(long)) %>% 
+    as.data.frame()
+  
+  # Get sunrise/sunset for each survey day
+  nav.daynight <- data.frame()
+  
+  for (i in 1:nrow(sun.nav)) {
+    tmp <- day_night(date = sun.nav$date[i], 
+                     geocode = data.frame(lat = sun.nav$lat[i],
+                                          lon = sun.nav$long[i]))
+    nav.daynight <- bind_rows(nav.daynight,tmp)
+  }
+  
+  # Format the results
+  nav.daynight <- nav.daynight %>% 
+    mutate(sunrise = as.POSIXct(paste(day, hms::as_hms(sunrise*3600)), format = "%F %T"),
+           sunset = sunrise + daylength*3600,
+           sunrise = as.character(sunrise),
+           sunset = as.character(sunset)) %>% 
+    select(day, sunrise, sunset) %>% 
+    gather(period, time, -day) %>% 
+    mutate(time = as.POSIXct(time, format = "%F %T")) %>% 
+    arrange(time) %>% 
+    mutate(id = seq(1, nrow(.)))
+  
+  # Get nav depth and compute photoperiod
+  nav.depth <- get.depth(bathy, nav$long, nav$lat, locator = F, distance = T) %>% 
+    bind_cols(select(nav, time, dist)) %>% 
+    mutate(dist.depth = c(0,diff(dist.km))) %>% 
+    filter(dist.depth < 100) %>% 
+    mutate(depth_bin = cut(depth, c(min(depth), -200, 0), include.lowest = T, labels = F),
+           id = cut(time, nav.daynight$time, include.lowest = T, labels = F),
+           depth_bin = case_when(
+             depth_bin == 1 ~ ">200m",
+             depth_bin == 2 ~ "< 200 m")) %>% 
+    filter(!is.na(depth_bin)) %>% 
+    left_join(select(nav.daynight, id, period)) %>% 
+    mutate(day_night = case_when(
+      period == "sunrise" ~ "Day",
+      period == "sunset"  ~ "Night"))
+  
+  nav.depth <- get.depth(bathy, nav$long, nav$lat, locator = F, distance = T) %>%
+    rename(long = lon) %>%
+    bind_cols(select(nav, datetime, dist)) %>%
+    mutate(dist.depth = c(0, diff(dist.km))) %>%
+    filter(dist.depth < 100)  %>% # Remove distant points
+    mutate(depth_bin = cut(depth, c(min(depth), -200, 0), include.lowest = T, labels = F),
+           id = cut(as.numeric(datetime), as.numeric(nav.daynight$time),
+                    include.lowest = T, labels = F),
+           depth_bin = case_when(
+             depth_bin == 1 ~ "Deep (>200 m)",
+             depth_bin == 2 ~ "Shallow (<200 m)")) %>%
+    filter(!is.na(depth_bin)) %>%
+    left_join(select(nav.daynight, id, period)) %>%
+    mutate(day_night = case_when(
+      period == "sunrise" ~ "Day",
+      period == "sunset"  ~ "Night")) %>%
+    mutate(pings = case_when(
+      abs(depth) < 250              ~ 60*(750/abs(250)),
+      between(abs(depth), 250, 750) ~ 60*(750/abs(depth)),
+      abs(depth) > 750              ~ 60*(750/abs(750)))) %>% # Compute time interval
+    project_df(to = crs.proj) %>% 
+    arrange(desc(day_night), datetime)
+  
+  # Summarise distance by day/night and depth
+  nav.summ <- nav.depth %>% 
+    filter(!is.nan(dist), !is.na(period)) %>% 
+    group_by(depth_bin, day_night) %>% 
+    summarise(
+      dist_km  = round(sum(dist)),
+      pings_ek = round(sum(pings))) %>% 
+    mutate(
+      dist_nmi = round(dist_km * 0.539957)) %>% 
+    select(depth_bin:dist_km, dist_nmi, everything())
+}
+
+# Write results to file
+write_csv(nav.summ, paste0(here("Output"), "/", survey.name, "_LineKilometers_", survey.vessel, ".csv"))
+```
+
+# Summarize effort by depth and day/night
+
+```{r effort-summary}
+# Print nav summary
+nav.summ %>% 
+  rename(Depth            = depth_bin,
+         Period           = day_night,
+         "Distance (km)"  = dist_km,
+         "Distance (nmi)" = dist_nmi,
+         Pings            = pings_ek) %>%  
+  kable(format = knitr.format, booktabs = TRUE, escape = F,
+        align = c("c")) %>% 
+  kable_styling(bootstrap_options = c("striped","hover","condensed"),
+                full_width = F) %>%
+  row_spec(0, align = c("c"))
+```
+```{r create-basemap,include=F}
+# Configure map dimensions and labels ------------------------------------------
+# Calculate map boundaries
+nav.sf <- nav %>% 
+  st_as_sf(coords = c("long","lat"), crs = crs.geog)
+  
+map.bounds <- nav.sf %>%
+  st_transform(crs = crs.proj) %>%
+  st_bbox()
+
+# Determine map aspect ratio and set height and width
+map.aspect <- (map.bounds$xmax - map.bounds$xmin)/(map.bounds$ymax - map.bounds$ymin)
+map.height <- 10
+map.width  <- map.height*map.aspect
+
+# Configure base map options -----------------
+# Import landmarks
+locations <- filter(read.csv(here("Data/Map/locations.csv")), name %in% label.list) %>% 
+  project_df(to = crs.proj) %>% 
+  filter(between(Y, map.bounds$ymin, map.bounds$ymax)) 
+
+# Get state data
+states <- ne_states(country = 'United States of America', returnclass = 'sf')
+ca     <- filter(states, name == "California")
+
+# Get countries
+countries <- ne_countries(scale = "large", returnclass = "sf") %>%
+  filter(subregion %in% c("Northern America","Central America"))
+
+# Read bathy contours shapefile 
+bathy <- st_read(here("Data/GIS/bathy_contours.shp")) %>% 
+  st_transform(crs.geog) %>% 
+  rename(Depth = Contour)
+
+# Create base map
+base.map <- get_basemap(nav.sf, states, countries, locations, bathy, map.bounds, crs = crs.proj) +
+  # Add scalebar
+  annotation_scale(style = "ticks", location = "br", height = unit(0.15, "cm"))
+
+# Save map object
+save(base.map, file = here("Data/Map/basemap.Rdata")) 
+```
+
+# Map vessel nav by depth and day/night
+
+```{r map-daynight-bathy}
+if (save.figs) {
+  # Map Lasker results by depth bin
+  bathy.plot <- base.map + 
+    geom_point(data = nav.depth, aes(X, Y, colour = depth_bin), size = 0.5) +
+    scale_colour_manual(name = "Depth", values = c("#40C270","#1C1C8A")) +
+    theme(legend.position      = c(0,0),
+          legend.justification = c(0,0),
+          legend.background    = element_blank(),
+          legend.key           = element_blank()) +
+    ggtitle("Vessel nav by depth") 
+  
+  # Map results by day/night
+  daynight.plot <- base.map + 
+    geom_point(data = nav.depth, aes(X, Y, colour = day_night), size = 0.5) +
+    scale_colour_manual(name = "Time of day", values = c("#F09F43","#211D1D")) +
+    theme(legend.position      = c(0,0),
+          legend.justification = c(0,0),
+          legend.background    = element_blank(),
+          legend.key           = element_blank()) +
+    ggtitle("Vessel nav by day/night")
+  
+  # Combine plots
+  bathy.photo.plot <- plot_grid(bathy.plot, 
+                                daynight.plot, 
+                                nrow = 2, align = "h")
+  
+  # Save combo plot
+  ggsave(bathy.photo.plot, 
+         filename = paste0(here("Figs"), "/", survey.name, "_nav_depth_day_", survey.vessel, ".png"),
+         height = map.height*2, width = map.width)
+  
+}
+
+# Include figure
+include_graphics(paste0(here("Figs"), "/", survey.name, "_nav_depth_day_", survey.vessel, ".png"))
+```
+
+# Map vessel nav by depth (daytime only)
+
+```{r map-daytime-bathy}
+# Map only daytime nav by depth
+day.plot <- base.map + 
+  geom_point(data = filter(nav.depth, day_night == "Day"), 
+             aes(X, Y, colour = depth_bin), size = 0.5) +
+  scale_colour_manual(name = "Depth", values = c("#40C270", "#1C1C8A")) +
+  theme(legend.position      = c(0,0),
+        legend.justification = c(0,0),
+        legend.background    = element_blank(),
+        legend.key           = element_blank()) +
+  ggtitle("Daytime vessel nav by depth")
+
+# Save daytime only plot
+ggsave(day.plot, 
+       filename = paste(here("Figs"),"/",survey.name, "_nav_depth_", survey.vessel, ".png", sep = ""),
+       height = map.height, width = map.width)
+
+include_graphics(paste(here("Figs"),"/",survey.name, "_nav_depth_", survey.vessel, ".png", sep = ""))
+```
+
+
+
